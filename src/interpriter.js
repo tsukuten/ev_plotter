@@ -4,9 +4,14 @@
 	プロッターを対話形式で実行する。 Interactively manipulate Plotter.
 */
 const chalk = require('chalk');
-const todayFile = '../data/hipp_0_exp-10mm.dat';
-let finish = false;
 
+
+const todayFile = '../data/hipp_0_exp-10mm.dat';
+let isDebug = false;
+let isDummy = false;
+
+
+let finish = false;
 const reader = require('readline').createInterface({
     input: process.stdin,
     output: process.stdout
@@ -33,16 +38,15 @@ let log = new l(true,false,true);
 
 let time = 0;
 
-let isDebug = false;
-
 let instance = {};
 const exe = {
+	//Arduino{X,Y,Z}やController,Plotterオブジェクトの初期化
 	"init": () => {
 			return init.initPorts()
 				.then((r) => {
-					if(r.length || isDebug){
+					if(r.length || isDummy){
 						instance['arduino_array'] = r;
-						instance['c'] = new Controller(r,log);
+						instance['c'] = new Controller(r,log,isDebug,isDummy);
 						if(instance['c'].plotter){
 							instance['p'] = instance['c'].plotter;
 							if(instance['c'].plotter.x) instance['x'] = instance['c'].plotter.x;
@@ -64,18 +68,6 @@ const exe = {
 					return result;
 				})
 				.catch((e) => "init faild." + e);
-	},
-	"check":() => {
-		return Promise.all([init.checkArduino(instance['arduino_array']), instance['c'].getPos()])
-						.then((res_a) => {
-							if(res_a[0]){
-								console.log("Already all Arduinos has initialized.");
-								console.log(res_a[1]);
-							} else {
-								console.error("More Arduinos are required.");
-								console.log(res_a[1]);
-							}
-						});
 	},
 	"portlist":() => {
 		return init.portList()
@@ -108,9 +100,8 @@ const exe = {
 		else return Promise.resolve('No Controller!!! Please use \'init\' for initializing Controller.');
 	},
 	"instance": (args) => {
-		if(instance[args]) return JSON.stringify(instance[args])
-		else return JSON.stringify(instance)
-		return JSON.stringify(instance);
+		if(instance[args]) return JSON.stringify(instance[args],undefined,1)
+		else return JSON.stringify(instance,undefined,1)	
 	}
 }
 
@@ -121,7 +112,7 @@ const objexe = {
 			return instance['c'].runPlot(todayFile);
 		},
 		_run:() => {
-			return instance['c']._getPlane(todayFile);
+			return instance['c'].checkFile(todayFile);
 		},
 		setFile:(dataFileName) => {
 			console.log(dataFileName);
@@ -457,16 +448,17 @@ function logPromise(log,bool){ //if bool is false, outputs log
 	})
 }
 
-// module.exports.run = function (){
-// 	parse("init")
-// 		.then((d) => {
-// 			console.log(d);
-// 			return run();
-// 		}).then( () => process.exit() );	
-// }
 
+// check arguments
+for(var i = 0;i < process.argv.length; i++){
+  if(process.argv[i] === '--debug')
+  	isDebug = true;
+  if(process.argv[i] === '--dummy')
+  	isDummy = true;
+}
+
+//START!!!
 console.log(chalk.underline.red("begin init"));
-if(isDebug) console.log(chalk.bold("interpriter:DEBUG MODE"));
 parse("init")
 	.then((d) => {
 		console.log(d);
