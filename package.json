@@ -1,0 +1,29 @@
+{
+  "name": "ev_plotter",
+  "version": "1.0.0",
+  "description": "プラネタリウム投影機用恒星原板作成のためのプロッター制御プログラム",
+  "main": "main.js",
+  "dependencies": {
+    "chalk": "^2.3.0",
+    "linspace": "^1.0.0",
+    "log-update": "^2.3.0",
+    "logspace": "^1.0.1",
+    "serialport": "^4.0.0",
+    "sprintf-js": "^1.1.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "mimura",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "github.com:tsukuten/ev_plotter.git"
+  },
+  "keywords": [
+    "node.js",
+    "plotter",
+    "planetarium"
+  ]
+}
