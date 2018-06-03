@@ -59,6 +59,14 @@ class ArduinoX extends Arduino{
 		});
 	}
 
+	getLinerErrVal(){
+		return new Promise((resolve,reject) => {
+			this.receiveData('o')
+				.then(resolve)
+				.catch(reject);
+		});
+	}	
+
 ////////////////////////////////////////////////////
 
 	move2TarVal(){

@@ -22,7 +22,7 @@ volatile int s_a = false;  //aの状態(1 or -1)
 volatile int s_b = false;  //bの状態(1 or -1)
 const int unit = 5000; // リニアエンコーダの分解能 5,000nm(=5μm)
 uint8_t bit_a, bit_b, port_a, port_b; // digitalReadの初期設定
-volatile int lineErrCount = 0;
+volatile int linerErrCount = 0;
 
 //プロッター変数
 #define dataSize 4
@@ -96,6 +96,10 @@ boolean switchOp(char c){
 		case 'l':
 			changeState('l');
 			sendData(errCriteria);
+			break;
+		case 'o':
+			changeState('o');
+			sendData(linerErrCount);
 			break;
 		case 'r':
 			changeState('r');
@@ -317,10 +321,10 @@ void interrupptf() {
 	// 状態遷移を確かめるためのc,dを計算
 	int c = s_a ^ b;
 	int d = s_b ^ a;
-	// 状態遷移から移動量を算出, lineErrCountは不正な遷移の個数を記録
+	// 状態遷移から移動量を算出, linerErrCountは不正な遷移の個数を記録
 	if(c && !d) curVal -= unit;
 	else if(d && !c) curVal += unit;
-	else lineErrCount++;
+	else linerErrCount++;
 	// 次の状態遷移を求めるために、現在の状態を保存
 	s_a = a;
 	s_b = b;

@@ -3,18 +3,17 @@ const init = require("./port_init.js");
 
 
 let dummyProf = {
-	delay:50,
-	reboot:10 * 1000,
+	delay:1,
+	rebootingTime:10 * 1000,
 	pos:[],
 	ec:-1
 }
 
-const isDebug = true;
-
 class Plotter{
-	constructor(arduino_array){
-		this.isDebug = false;
-		this.isDummy = false;
+	constructor(arduino_array, isDebug=false, isDummy=false){
+		this.isDebug = isDebug;
+		this.isDummy = isDummy;
+		this.isDataDebug = false;
 		this.ard = arduino_array;
 		this.plotterProperty = {};
 		this.timeout = 10 * 1000; //30s
@@ -67,7 +66,7 @@ class Plotter{
 		if(pos){
 			result.push('loadPos');
 		}
-		// ecをロードするj
+		// ecをロードする
 		if(this.plotterProperty.ec){
 			await this.setErrCriteria(this.plotterProperty.ec);
 			result.push('ec');
@@ -76,6 +75,9 @@ class Plotter{
 	}
 
 	detail(){
+		if(this.isDummy){
+			return `Dummy Arduino`;
+		}
 		let str = 'x:';
 		if(this.x) str += this.x.port.path;
 		else str += "none";
@@ -109,24 +111,24 @@ class Plotter{
 			pos = await Promise.all([this.x.getCurVal(),this.y.getCurVal(),this.z.getCurVal()]);
 		}
 		this.plotterProperty.pos = pos;
-		if(this.isDebug) console.log(`getPos: pos=${pos}`);
+		if(this.isDataDebug) console.log(`getPos: pos=${pos}`);
 		return pos;
 	}
 
 	async loadPos(){
 		let pos_array = this.plotterProperty.pos;
 		if(!pos_array){
-			if(this.isDebug) console.log(`loadPos: retrun ${pos_array}`);
+			if(this.isDataDebug) console.log(`loadPos: retrun ${pos_array}`);
 			return false;
 		}
 		await this.setPos(...pos_array); //スプレッド演算子 (Spread Operator)
 		return true;
 	}
 
-	moveXY(x,y){
+	async moveXY(x,y){
 		if(this.isDummy){
 			dummyProf.pos.splice(0,2,x,y);
-			return promisedelay(dummyProf.delay);
+			return await promisedelay(dummyProf.delay);
 		} else {
 			return Promise.all([this.x.move(x),this.y.move(y)]);
 		}
@@ -153,7 +155,7 @@ class Plotter{
 	async setErrCriteria(data){ 
 		let ret;
 		if(this.isDummy){
-			ret = 'using dummy';
+			ret = `using dummy, ec=${data}nm`;
 			dummyProf.ec = data;
 		} else {
 			ret = await Promise.all([this.x.setErrCriteria(data), this.y.setErrCriteria(data)]);
@@ -172,6 +174,15 @@ class Plotter{
 		}
 	}
 	
+	async getLinerErrVal(){
+		if(this.isDummy){
+			await promisedelay(dummyProf.delay);
+			console.log(`this is dummy return value`);
+			return [-1,-1]
+		} else {
+			return Promise.all([this.x.getLinerErrVal(), this.y.getLinerErrVal()]);	
+		}
+	}
 	plot(time){
 		return new Promise((resolve,reject) => {
 			logPromise(time+"us プロット中")
@@ -205,7 +216,7 @@ class Plotter{
 
 	async reOpen(){
 		if(this.isDummy){
-			await promisedelay(dummyProf.reboot);
+			await promisedelay(dummyProf.rebootingTime);
 			this.setArduinos();
 		} else {
 			await this.close().catch((e) => {
