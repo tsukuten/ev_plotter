@@ -11,9 +11,14 @@ process.on('unhandledRejection', console.dir);
 var l = require('./Log.js');
 var log = new l(true, false, true);
 
-const READ_BUFF_SIZE = 56;
-
+//恒星データ一行の長さ
+const READ_BUFF_SIZE = 55;
+//平面補正を加えるかどうか
 const ENABEL_CORRECT = false;
+//面の傾きのx(A),y(B)の係数
+// const B = 0.000832359;
+// const A = -0.0000302126;
+
 
 const DATA_FILE_PATH = "../data/";
 //面の傾きのx(A),y(B)の係数
@@ -21,11 +26,12 @@ const DATA_FILE_PATH = "../data/";
 // const A = -0.0000302126;
 
 class Controller {
-	constructor(arduino_array, log){
-		this.isDebug = true;
-		this.plotter = new Plotter(arduino_array);
+	constructor(arduino_array, log, isDebug=false, isDummy=false){
+		this.isDebug = isDebug;
+		this.isDataDebug = false;
+		this.plotter = new Plotter(arduino_array, isDebug, isDummy);
 		this.runFile = null;
-		this.filefin = false;
+		// this.filefin = false;
 		this.nData = null;		//nextData:次にプロットするデータ
 		this.cData = null;		//currentData:現在プロットしようとしているデータ
 		this.buf = [];				//星のデータの一時的な保存場所
@@ -42,9 +48,10 @@ class Controller {
 			console.log("ファイルを設定しました. runFile=" + fullpath);
 			return await this.checkFile(this.runFile);
 		} catch (err) {
-			this.log.error("setFile Error: runFile=" + fullpath + "::" + err);
+			const errmsg = `setFile Error: runFile=${fullpath}: ${err}`;
+			console.error(errmsg);
 			this.runFile = null;
-			return new Error(err);
+			return new Error(errmsg);
 		}
 	}
 
@@ -70,7 +77,7 @@ class Controller {
 				// console.log("id:"+data.id+" ok. data=("+ data.x + "," + data.y + "," + data.z + "," + data.t + ")");
 				return true;
 			} else {
-				this.log.error("id:" + data.id + " NG. data=(" + data.x + "," + data.y + "," + data.z + "," + data.t + ")");
+				console.log.error("id:" + data.id + " NG. data=(" + data.x + "," + data.y + "," + data.z + "," + data.t + ")");
 				return false;
 			}
 		};
@@ -80,12 +87,13 @@ class Controller {
 
 	makeFileStream(filename) {
 		if(this.isDebug) console.log("in initreadstream");
-		this.filefin = false;
+		// this.filefin = false;
 		let readStream = fs.createReadStream(filename);
 		let rl = readline.createInterface(readStream, null, null);
 		rl.on('line', (l) => {
-			// if(this.isDebug) console.log(`readline:${l}`);
-			this.buf.push(l);
+			if(this.isDataDebug) console.log(`readline:${l}`);
+			if(l)
+				this.buf.push(l);
 		})
 		return rl;
 	}
@@ -121,9 +129,11 @@ class Controller {
 
 	waitData(rl) {
 		return new Promise((resolve, reject) => {
-			this.log.debug("waitData lock");
+			if(this.isDataDebug)
+				console.log("waitData lock");
 			let lineCo = function() {
-				this.log.debug("waitData unlock");
+				if(this.isDataDebug)
+					this.log.debug("waitData unlock");
 				rl.removeListener("close", resolve);
 				resolve();
 			}
@@ -137,7 +147,7 @@ class Controller {
 	moveAndLoad(rs) {
 		return new Promise((resolve, reject) => {
 			this.setcData();
-						Promise.all([this.getnData(rs), this.plotter.move2Point(this.cData)])
+			Promise.all([this.getnData(rs), this.plotter.move2Point(this.cData)])
 				.then(resolve)
 				.catch(reject);
 		});
@@ -150,7 +160,6 @@ class Controller {
 			return this.moveAndLoad(rs)
 				.then(() => {
 					return this.plotter.plot(this.cData.t);
-					// return this.plotter.plot(1);
 				})
 				.then(() => {
 					resolve(this.cData.id);
@@ -211,31 +220,6 @@ class Controller {
 		})
 	}
 
-	//getPlaneのデバッグ用関数
-	_getPlane(runfilepath) {
-		return new Promise((resolve, reject) => {
-			console.log(chalk.red(runfilepath));
-			let filepath = (runfilepath ? runfilepath : this.runFile);
-			console.log("makeFileStream:" + filepath);
-			let res = [];
-			this.makeFileStream(filepath)
-				.then((rs) => { //rs:readstream
-					return this.getnData(rs);
-				})
-				.then(function loop(rs) {
-					if (!this.nData) {
-						printrs(res);
-						resolve();
-					} else {
-						return this._moveAndLoad(rs)
-							.then(loop.bind(this, rs))
-							.catch((e) => logPromise(e))
-					}
-				}.bind(this))
-				.catch(reject);
-		})
-	}
-
 	async runPlot(runfilepath){
 		let filepath = (runfilepath ? runfilepath : this.filepath);
 		console.log("makeFileStream:" + filepath);
@@ -246,18 +230,31 @@ class Controller {
 		console.log("startPlotting");
 		let resultIdArray = [];
 		let id;
+		let diff = []; //only use for Debug
 		while(this.nData != null){
-			// if(this.plotter.isTimeout()){
-			// 	logUpdate(chalk.inverse(`  ${parseInt(100 * resultIdArray.length / num)}%   id=${resultIdArray[resultIdArray.length-1]}  `, chalk.reset(` `) ,chalk.magenta(`RECONNECTING 💤`)))
-			// 	await this.plotter.reConnect();
-			// }
 			id = await this.moveAndPlot(rs)
+			if(this.isDebug){
+				let d = await this.plotter.getPos();
+				diff.push({
+					id:this.cData.id,
+					"x-diff": this.cData.x - d[0],
+					"y-diff": this.cData.y - d[1],
+					"z-diff": this.cData.z - d[2]
+				});			 
+			}
 			resultIdArray.push(id);
-			// console.log(`nData:${JSON.stringify(this.nData)} cData:${JSON.stringify(this.cData)}`);
-			logUpdate(chalk.inverse(`  ${parseInt(100 * resultIdArray.length / num)}%   id=${resultIdArray[resultIdArray.length-1]}  `));
+			if(this.isDataDebug){
+				console.log(`nData:${JSON.stringify(this.nData)} cData:${JSON.stringify(this.cData)}`);
+			} else {
+				logUpdate(chalk.inverse(`  ${parseInt(100 * resultIdArray.length / num)}%   id=${resultIdArray[resultIdArray.length-1]}  `));
+			}
 		}
-		if(this.isDebug) console.log(JSON.stringify(resultIdArray));
-		return resultIdArray.length;		
+		if(this.isDebug){
+			console.log(JSON.stringify(resultIdArray));
+			console.log(JSON.stringify(diff,undefined,1));
+			console.log(`arduinoX,Y LinerErrVal=${await this.plotter.getLinerErrVal()}`);
+		}
+		return resultIdArray.length;	
 	}	
 
 	//同じ位置でのZ軸の繰り返し誤差をn回測定する。 new
@@ -283,13 +280,12 @@ class Controller {
 		}
 	}
 	
-	async runLong(howlong){
+	async runLong(howlong=3600000){
 		console.log(`runLong(${howlong})`);
 		const start = Date.now();
 		const dim = 30 * 1000;
 		let count = 0;
 		let last = this.plotter.timerLog[this.plotter.timerLog.length-1];
-		await this.plotter.setErrCriteria(10);
 		while(Date.now() - start < howlong){
 			console.log(`${start}, ${Date.now() - start},: ${Date.now()} , ${last}, ${dim}, ${Date.now() - last}`);
 			if(Date.now() - last > dim){
@@ -311,7 +307,7 @@ class Controller {
 }
 
 function makeStar(buf) {
-	if (buf && buf.length < 54) return null;
+	if (buf && buf.length < READ_BUFF_SIZE) return null;
 	var id = parseInt(buf.slice(0, 10));
 	var x = parseInt(buf.slice(11, 21));
 	var y = parseInt(buf.slice(22, 32));
@@ -347,11 +343,7 @@ function printrs(res) {
 }
 
 function getCorrectionZ(x, y) {
-	// return -1 * correctZ[idcorrect++];
-	// let hosei = -270.261+(-1*(-0.158267*x/1000000+0.0053395*y/1000000+31.0659)/0.205146);
-	// return -1 * Math.floor(hosei * 1000 + 400000) - 21695;
 	return Math.floor(-270.261 + (-1 * (-0.158267 * x / 1000000 + 0.0053395 * y / 1000000 + 31.0659) / 0.205146 * 1000) + 400000) - 248296;
-	// return -1 * Math.floor(A*x + B*y + 0.5);
 }
 
 module.exports = Controller;
