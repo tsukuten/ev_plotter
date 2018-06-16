@@ -62,6 +62,7 @@ const exe = {
 				.then((result) => {
 					if(instance['p']){
 						return instance['p'].init()
+							//xとyの許容誤差を10μに設定する。
 							.then(() => instance['p'].setErrCriteria(10000))
 							.then(result);
 					}
@@ -102,14 +103,23 @@ const exe = {
 	"instance": (args) => {
 		if(instance[args]) return JSON.stringify(instance[args],undefined,1)
 		else return JSON.stringify(instance,undefined,1)	
+	},
+	"zinit": async () => {
+		const xMargin = 20000000;
+		const yMargin = 9000000;
+		await instance['p'].moveXYby(xMargin, yMargin);
+		await instance['z'].zero();
+		await instance['z'].moveby(2880000);
+		await instance['z'].setCurVal(0);
+		await instance['p'].moveXYby(-xMargin, -yMargin);	
+		return 'ok';
 	}
 }
 
 const objexe = {
 	c:{
 		run:() => {
-			// return instance['c'].runPlot(todayFile);
-			return instance['c'].runPlot(todayFile);
+			return instance['c'].runPlot(todayFile,true);
 		},
 		_run:() => {
 			return instance['c'].checkFile(todayFile);
@@ -122,7 +132,6 @@ const objexe = {
 			} else {
 				console.error(`Arguments Error: setFile(${dataFileName})`);
 				return (`Arguments Error: setFile(${dataFileName})`);
-
 			}
 		},
 		rError:() => {
@@ -130,6 +139,9 @@ const objexe = {
 		},
 		runLong:async () => {
 			return await instance['c'].runLong(2 * 60 * 60 * 1000);
+		},
+		postPlot:async() =>{
+			return await instance['c'].postPlot();
 		}
 	},
 	p:{
@@ -151,6 +163,9 @@ const objexe = {
 		plot:(time)=>{
 			if(time !== undefined && typeof time === 'number')
 				return instance['p'].plot(time);
+		},
+		plotPoint:async (x,y,z,t)=>{
+			return instance['p'].plotPoint(x,y,z,t);
 		},
 		setPos:(x,y,z)=>{
 			if(x !== undefined && typeof x === 'number' && y !== undefined && typeof y === 'number' && z !== undefined && typeof z === 'number' )

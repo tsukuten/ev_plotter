@@ -31,7 +31,6 @@ class Controller {
 		this.isDataDebug = false;
 		this.plotter = new Plotter(arduino_array, isDebug, isDummy);
 		this.runFile = null;
-		// this.filefin = false;
 		this.nData = null;		//nextData:次にプロットするデータ
 		this.cData = null;		//currentData:現在プロットしようとしているデータ
 		this.buf = [];				//星のデータの一時的な保存場所
@@ -122,7 +121,6 @@ class Controller {
 							resolve(rl);
 						});
 				}
-
 			}
 		})
 	}
@@ -220,7 +218,7 @@ class Controller {
 		})
 	}
 
-	async runPlot(runfilepath){
+	async runPlot(runfilepath, isPostPlot){
 		let filepath = (runfilepath ? runfilepath : this.filepath);
 		console.log("makeFileStream:" + filepath);
 		const {num, errnum} = await this.setFile(filepath);
@@ -230,17 +228,12 @@ class Controller {
 		console.log("startPlotting");
 		let resultIdArray = [];
 		let id;
-		let diff = []; //only use for Debug
+		let diff = ''; //only use for Debug
 		while(this.nData != null){
 			id = await this.moveAndPlot(rs)
 			if(this.isDebug){
 				let d = await this.plotter.getPos();
-				diff.push({
-					id:this.cData.id,
-					"x-diff": this.cData.x - d[0],
-					"y-diff": this.cData.y - d[1],
-					"z-diff": this.cData.z - d[2]
-				});			 
+				diff += (`${this.cData.id},${this.cData.x - d[0]},${this.cData.y - d[1]},${this.cData.z - d[2]}\n`);			 
 			}
 			resultIdArray.push(id);
 			if(this.isDataDebug){
@@ -249,13 +242,49 @@ class Controller {
 				logUpdate(chalk.inverse(`  ${parseInt(100 * resultIdArray.length / num)}%   id=${resultIdArray[resultIdArray.length-1]}  `));
 			}
 		}
+		if(isPostPlot){
+			await postPlot();
+		}
 		if(this.isDebug){
 			console.log(JSON.stringify(resultIdArray));
-			console.log(JSON.stringify(diff,undefined,1));
+			console.log(diff);
 			console.log(`arduinoX,Y LinerErrVal=${await this.plotter.getLinerErrVal()}`);
 		}
 		return resultIdArray.length;	
-	}	
+	}
+
+	async postPlot(){
+		const crossPos = [ [3000000,3000000],[4230000,4230000], 
+						   [35860000,4230000],[37000000,3000000],
+						   [37000000,37000000],[35860000,35860000],
+						   [4230000,35860000],[3000000,37000000],
+						   [20000000,20000000] ];
+		const makeCross = async (x,y) => {
+			const n = 5; //nはクロスの一辺の数. nは奇数推奨
+			const diff = 250000;
+			const z = 505301;
+			const t = 1010;
+			for(let i = 0; i < n; i++){
+				const nx = x - Math.floor(n/2) * diff + diff * i + diff*((n+1)%2)/2;
+				const ny = y;
+				await this.plotter.plotPoint(nx, ny, z, t)
+				    .catch((e)=>{console.error(`ERROR:plotPoint(${x}, ${y}, ${z}, ${t}):${e}`)});
+				const pos = await this.plotter.getPos();
+			}
+			for(let i = 0; i < n; i++){
+				const nx = x;
+				const ny = y - Math.floor(n/2) * diff + diff * i + diff*((n+1)%2)/2;
+				if(x == nx && y == ny) continue;
+				await this.plotter.plotPoint(nx, ny, z, t)
+				    .catch((e)=>{console.error(`ERROR:plotPoint(${x}, ${y}, ${z}, ${t}):${e}`)});
+				const pos = await this.plotter.getPos();		    
+			}			
+		}
+		for(let i = 0; i < crossPos.length; i++){
+			await makeCross(...crossPos[i]);
+		}
+		return;		
+	}
 
 	//同じ位置でのZ軸の繰り返し誤差をn回測定する。 new
 	async repetitiveError(n) {

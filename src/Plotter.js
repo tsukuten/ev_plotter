@@ -3,7 +3,7 @@ const init = require("./port_init.js");
 
 
 let dummyProf = {
-	delay:1,
+	delay:100,
 	rebootingTime:10 * 1000,
 	pos:[],
 	ec:-1
@@ -134,21 +134,22 @@ class Plotter{
 		}
 	}
 	
+	async moveXYby(x,y){
+		if(this.isDummy){
+			dummyProf.pos.splice(0,2,x,y);
+			return await promisedelay(dummyProf.delay);
+		} else {
+			return Promise.all([this.x.moveby(x),this.y.moveby(y)]);
+		}
+	}
+
 	async move2Point(point){
 		if(this.isDummy){
 			dummyProf.pos = [point.x, point.y, point.z];
 			return await promisedelay(dummyProf.delay);
-			// return Promise.all([promisedelay(dummyProf.delay)]);
 		}else{
 			return Promise.all([this.x.move(point.x),this.y.move(point.y),this.z.move(point.z)]);
 		}
-	}
-
-	async _move2Point(point){
-		await this.setPos(point.x, point.y, point.z);
-		const pos = await this.getPos();
-		return pos;
-		// Promise.all([logPromise(point.id+":("+point.x+","+point.y+","+point.z+")"),promisedelay(1)]);
 	}
 
 	//property保存あり
@@ -193,6 +194,34 @@ class Plotter{
 				})
 				.then(resolve)
 				.catch(reject)
+		})
+	}
+
+	async plotPoint(x, y, z, t) {
+		if( x === undefined || typeof x !== 'number' || 
+			y === undefined || typeof y !== 'number' ||
+			z === undefined || typeof z !== 'number' ||
+			t === undefined || typeof t !== 'number' ){
+				return new Error(`arguments error: ${x} ${y} ${z} ${t}`);
+		}
+		await this.move2Point({x,y,z,t}).catch((e)=>new Error(`plotPointError:${x} ${y} ${z} ${t} , Error:${e}`));
+		await this.plot({x,y,z,t}).catch((e)=>new Error(`plotPointError:${x} ${y} ${z} ${t} , Error:${e}`));
+		if(this.isDebug) console.log(`plotPoint Done:${x} ${y} ${z} ${t}`)
+		return;
+	}
+
+	//moveAndLoadでthis.cDataに移動し、this.cData.tの時間だけプロットを行う
+	//rsはファイルのストリームでありmoveAndLoadにそのまま渡している。
+	moveAndPlot(rs) {
+		return new Promise((resolve, reject) => {
+			return this.moveAndLoad(rs)
+				.then(() => {
+					return this.plotter.plot(this.cData.t);
+				})
+				.then(() => {
+					resolve(this.cData.id);
+				})
+				.catch(reject);
 		})
 	}
 
